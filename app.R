@@ -7,6 +7,8 @@ source("R/01_import.R")
 source("R/02_inspect.R")
 source("R/03_standardise_names.R")
 source("R/04_clean_values.R")
+source("R/05_detect_keys.R")
+source("R/06_join_data.R")
 
 ui <- page_sidebar(
   
@@ -31,8 +33,45 @@ ui <- page_sidebar(
       tags$li("Clean"),
       tags$li("Join"),
       tags$li("Export")
-    )
+    ),
     
+    hr(),
+    
+    h5("Join"),
+    
+    selectInput(
+      "left_dataset",
+      "Left dataset",
+      choices = NULL
+    ),
+    
+    selectInput(
+      "right_dataset",
+      "Right dataset",
+      choices = NULL
+    ),
+    
+    selectInput(
+      "join_key",
+      "Join key",
+      choices = NULL
+    ),
+    
+    selectInput(
+      "join_type",
+      "Join type",
+      choices = c(
+        "left",
+        "inner",
+        "right",
+        "full"
+      )
+    ),
+    
+    actionButton(
+      "join_button",
+      "Join datasets"
+    )
   ),
   
   card(
@@ -46,29 +85,72 @@ ui <- page_sidebar(
   ),
   
   card(
+    card_header("Joined Dataset"),
+    DTOutput("joined_dataset")
+  ),
+  
+  card(
     card_header("Dataset Preview"),
     DTOutput("dataset_preview")
   )
-  
 )
 
 server <- function(input, output, session) {
   
-  # Application state
   state <- reactiveValues(
-    datasets = NULL
+    datasets = NULL,
+    key_candidates = NULL,
+    joined_data = NULL
   )
   
-  # Import uploaded CSV files
   observeEvent(input$csv_files, {
     
     req(input$csv_files)
     
     state$datasets <- prepare_datasets(input$csv_files)
+    state$key_candidates <- detect_keys(state$datasets)
+    state$joined_data <- NULL
     
+    updateSelectInput(
+      session,
+      "left_dataset",
+      choices = names(state$datasets)
+    )
+    
+    updateSelectInput(
+      session,
+      "right_dataset",
+      choices = names(state$datasets)
+    )
   })
   
-  # Uploaded files table
+  observe({
+    
+    req(state$key_candidates)
+    
+    updateSelectInput(
+      session,
+      "join_key",
+      choices = unique(state$key_candidates$column)
+    )
+  })
+  
+  observeEvent(input$join_button, {
+    
+    req(state$datasets)
+    req(input$left_dataset)
+    req(input$right_dataset)
+    req(input$join_key)
+    req(input$join_type)
+    
+    state$joined_data <- join_data(
+      left_data = state$datasets[[input$left_dataset]],
+      right_data = state$datasets[[input$right_dataset]],
+      by = input$join_key,
+      join = input$join_type
+    )
+  })
+  
   output$uploaded_files <- renderDT({
     
     req(input$csv_files)
@@ -84,9 +166,8 @@ server <- function(input, output, session) {
         dom = "t"
       )
     )
-    
   })
-  #
+  
   output$dataset_summary <- renderDT({
     
     req(input$uploaded_files_rows_selected)
@@ -105,9 +186,22 @@ server <- function(input, output, session) {
         paging = FALSE
       )
     )
-    
   })
-  # Preview selected dataset
+  
+  output$joined_dataset <- renderDT({
+    
+    req(state$joined_data)
+    
+    datatable(
+      state$joined_data,
+      rownames = FALSE,
+      options = list(
+        pageLength = 20,
+        scrollX = TRUE
+      )
+    )
+  })
+  
   output$dataset_preview <- renderDT({
     
     req(input$uploaded_files_rows_selected)
@@ -124,9 +218,7 @@ server <- function(input, output, session) {
         scrollX = TRUE
       )
     )
-    
   })
-  
 }
 
 shinyApp(ui, server)
