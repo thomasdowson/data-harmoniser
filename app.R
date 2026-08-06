@@ -11,6 +11,7 @@ source("R/04_clean_values.R")
 source("R/05_detect_keys.R")
 source("R/06_validate_joins.R")
 source("R/07_join_data.R")
+source("R/09_export.R")
 
 ui <- page_sidebar(
   
@@ -73,6 +74,20 @@ ui <- page_sidebar(
     actionButton(
       inputId = "join_button",
       label = "Join datasets"
+    ),
+    
+    hr(),
+    
+    h5("Export"),
+    
+    downloadButton(
+      outputId = "download_csv",
+      label = "Export CSV"
+    ),
+    
+    downloadButton(
+      outputId = "download_rds",
+      label = "Export RDS"
     )
   ),
   
@@ -198,6 +213,7 @@ server <- function(input, output, session) {
     
     # Avoid silently overwriting an earlier chained result
     if (new_name %in% names(state$datasets)) {
+      
       suffix <- 2
       
       while (
@@ -314,6 +330,42 @@ server <- function(input, output, session) {
       )
     )
   })
+  
+  output$download_csv <- downloadHandler(
+    
+    filename = function() {
+      "harmonised_dataset.csv"
+    },
+    
+    content = function(file) {
+      
+      req(state$joined_data)
+      
+      export_data(
+        data = state$joined_data,
+        path = file,
+        format = "csv"
+      )
+    }
+  )
+  
+  output$download_rds <- downloadHandler(
+    
+    filename = function() {
+      "harmonised_dataset.rds"
+    },
+    
+    content = function(file) {
+      
+      req(state$joined_data)
+      
+      export_data(
+        data = state$joined_data,
+        path = file,
+        format = "rds"
+      )
+    }
+  )
 }
 
 shinyApp(ui, server)
