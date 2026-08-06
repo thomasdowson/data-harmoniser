@@ -3,6 +3,7 @@ library(bslib)
 library(DT)
 
 source("R/01_import.R")
+source("R/02_inspect.R")
 
 ui <- page_sidebar(
   
@@ -34,6 +35,11 @@ ui <- page_sidebar(
   card(
     card_header("Uploaded Files"),
     DTOutput("uploaded_files")
+  ),
+  
+  card(
+    card_header("Dataset Summary"),
+    DTOutput("dataset_summary")
   ),
   
   card(
@@ -77,7 +83,27 @@ server <- function(input, output, session) {
     )
     
   })
-  
+  #
+  output$dataset_summary <- renderDT({
+    
+    req(input$uploaded_files_rows_selected)
+    req(state$datasets)
+    
+    selected_file <-
+      input$csv_files$name[input$uploaded_files_rows_selected]
+    
+    datatable(
+      inspect_dataset(
+        state$datasets[[selected_file]]
+      ),
+      rownames = FALSE,
+      options = list(
+        dom = "t",
+        paging = FALSE
+      )
+    )
+    
+  })
   # Preview selected dataset
   output$dataset_preview <- renderDT({
     
