@@ -1,5 +1,6 @@
-"CustomerID","Order"
-1,"TV"
-1,"Laptop"
-2,"Phone"
-4,"Table"
+"customer_id","OrderDate","OrderValue"
+1001,"2025-01-01",120
+1001,"01/02/2025",450
+1002,"",80
+1005,"Unknown",999
+9999,"2025-05-01",50

@@ -8,7 +8,8 @@ source("R/02_inspect.R")
 source("R/03_standardise_names.R")
 source("R/04_clean_values.R")
 source("R/05_detect_keys.R")
-source("R/06_join_data.R")
+source("R/06_validate_joins.R")
+source("R/07_join_data.R")
 
 ui <- page_sidebar(
   
@@ -40,26 +41,26 @@ ui <- page_sidebar(
     h5("Join"),
     
     selectInput(
-      "left_dataset",
-      "Left dataset",
+      inputId = "left_dataset",
+      label = "Left dataset",
       choices = NULL
     ),
     
     selectInput(
-      "right_dataset",
-      "Right dataset",
+      inputId = "right_dataset",
+      label = "Right dataset",
       choices = NULL
     ),
     
     selectInput(
-      "join_key",
-      "Join key",
+      inputId = "join_key",
+      label = "Join key",
       choices = NULL
     ),
     
     selectInput(
-      "join_type",
-      "Join type",
+      inputId = "join_type",
+      label = "Join type",
       choices = c(
         "left",
         "inner",
@@ -69,14 +70,14 @@ ui <- page_sidebar(
     ),
     
     actionButton(
-      "join_button",
-      "Join datasets"
+      inputId = "join_button",
+      label = "Join datasets"
     )
   ),
   
   card(
-    card_header("Uploaded Files"),
-    DTOutput("uploaded_files")
+    card_header("Available Datasets"),
+    DTOutput("available_datasets")
   ),
   
   card(
@@ -90,6 +91,11 @@ ui <- page_sidebar(
   ),
   
   card(
+    card_header("Join Validation"),
+    DTOutput("join_validation")
+  ),
+  
+  card(
     card_header("Dataset Preview"),
     DTOutput("dataset_preview")
   )
@@ -100,41 +106,65 @@ server <- function(input, output, session) {
   state <- reactiveValues(
     datasets = NULL,
     key_candidates = NULL,
+    validation = NULL,
     joined_data = NULL
   )
   
+  # Import and prepare uploaded CSV files
   observeEvent(input$csv_files, {
     
     req(input$csv_files)
     
     state$datasets <- prepare_datasets(input$csv_files)
     state$key_candidates <- detect_keys(state$datasets)
+    state$validation <- NULL
     state$joined_data <- NULL
+    
+    dataset_names <- names(state$datasets)
     
     updateSelectInput(
       session,
       "left_dataset",
-      choices = names(state$datasets)
+      choices = dataset_names,
+      selected = dataset_names[1]
     )
     
     updateSelectInput(
       session,
       "right_dataset",
-      choices = names(state$datasets)
+      choices = dataset_names,
+      selected = dataset_names[min(2, length(dataset_names))]
     )
   })
   
+  # Update join keys for the selected pair of datasets
   observe({
     
     req(state$key_candidates)
+    req(input$left_dataset)
+    req(input$right_dataset)
+    
+    pair_candidates <- state$key_candidates[
+      (
+        state$key_candidates$dataset_1 == input$left_dataset &
+          state$key_candidates$dataset_2 == input$right_dataset
+      ) |
+        (
+          state$key_candidates$dataset_1 == input$right_dataset &
+            state$key_candidates$dataset_2 == input$left_dataset
+        ),
+      ,
+      drop = FALSE
+    ]
     
     updateSelectInput(
       session,
       "join_key",
-      choices = unique(state$key_candidates$column)
+      choices = unique(pair_candidates$column)
     )
   })
   
+  # Validate, join and save the joined dataset for future chained joins
   observeEvent(input$join_button, {
     
     req(state$datasets)
@@ -143,21 +173,69 @@ server <- function(input, output, session) {
     req(input$join_key)
     req(input$join_type)
     
+    left_data <- state$datasets[[input$left_dataset]]
+    right_data <- state$datasets[[input$right_dataset]]
+    
+    state$validation <- validate_join(
+      left_data = left_data,
+      right_data = right_data,
+      by = input$join_key
+    )
+    
     state$joined_data <- join_data(
-      left_data = state$datasets[[input$left_dataset]],
-      right_data = state$datasets[[input$right_dataset]],
+      left_data = left_data,
+      right_data = right_data,
       by = input$join_key,
       join = input$join_type
     )
+    
+    new_name <- paste(
+      tools::file_path_sans_ext(input$left_dataset),
+      tools::file_path_sans_ext(input$right_dataset),
+      sep = "_"
+    )
+    
+    # Avoid silently overwriting an earlier chained result
+    if (new_name %in% names(state$datasets)) {
+      suffix <- 2
+      
+      while (
+        paste0(new_name, "_", suffix) %in% names(state$datasets)
+      ) {
+        suffix <- suffix + 1
+      }
+      
+      new_name <- paste0(new_name, "_", suffix)
+    }
+    
+    state$datasets[[new_name]] <- state$joined_data
+    
+    # Recalculate candidates because a new dataset now exists
+    state$key_candidates <- detect_keys(state$datasets)
+    
+    dataset_names <- names(state$datasets)
+    
+    updateSelectInput(
+      session,
+      "left_dataset",
+      choices = dataset_names,
+      selected = new_name
+    )
+    
+    updateSelectInput(
+      session,
+      "right_dataset",
+      choices = dataset_names
+    )
   })
   
-  output$uploaded_files <- renderDT({
+  output$available_datasets <- renderDT({
     
-    req(input$csv_files)
+    req(state$datasets)
     
     datatable(
       data.frame(
-        File = input$csv_files$name,
+        Dataset = names(state$datasets),
         stringsAsFactors = FALSE
       ),
       rownames = FALSE,
@@ -170,15 +248,16 @@ server <- function(input, output, session) {
   
   output$dataset_summary <- renderDT({
     
-    req(input$uploaded_files_rows_selected)
+    req(input$available_datasets_rows_selected)
     req(state$datasets)
     
-    selected_file <-
-      input$csv_files$name[input$uploaded_files_rows_selected]
+    selected_dataset <- names(state$datasets)[
+      input$available_datasets_rows_selected
+    ]
     
     datatable(
       inspect_dataset(
-        state$datasets[[selected_file]]
+        state$datasets[[selected_dataset]]
       ),
       rownames = FALSE,
       options = list(
@@ -202,16 +281,31 @@ server <- function(input, output, session) {
     )
   })
   
-  output$dataset_preview <- renderDT({
+  output$join_validation <- renderDT({
     
-    req(input$uploaded_files_rows_selected)
-    req(state$datasets)
-    
-    selected_file <-
-      input$csv_files$name[input$uploaded_files_rows_selected]
+    req(state$validation)
     
     datatable(
-      head(state$datasets[[selected_file]], 10),
+      state$validation,
+      rownames = FALSE,
+      options = list(
+        dom = "t",
+        paging = FALSE
+      )
+    )
+  })
+  
+  output$dataset_preview <- renderDT({
+    
+    req(input$available_datasets_rows_selected)
+    req(state$datasets)
+    
+    selected_dataset <- names(state$datasets)[
+      input$available_datasets_rows_selected
+    ]
+    
+    datatable(
+      head(state$datasets[[selected_dataset]], 10),
       rownames = FALSE,
       options = list(
         pageLength = 10,
