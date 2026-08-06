@@ -2,7 +2,7 @@
 # Data Harmoniser - Reproducible Messy Sample Data
 # ============================================================
 
-set.seed(123)
+set.seed(55)
 
 # ------------------------------------------------------------
 # Output folder
