@@ -2,8 +2,11 @@ library(shiny)
 library(bslib)
 library(DT)
 
+source("R/00_pipeline.R")
 source("R/01_import.R")
 source("R/02_inspect.R")
+source("R/03_standardise_names.R")
+source("R/04_clean_values.R")
 
 ui <- page_sidebar(
   
@@ -61,7 +64,7 @@ server <- function(input, output, session) {
     
     req(input$csv_files)
     
-    state$datasets <- import_csvs(input$csv_files)
+    state$datasets <- prepare_datasets(input$csv_files)
     
   })
   
