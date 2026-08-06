@@ -5,12 +5,14 @@ library(DT)
 source("R/01_import.R")
 
 ui <- page_sidebar(
+  
   title = "Data Harmoniser",
   
   sidebar = sidebar(
+    
     fileInput(
-      "csv_files",
-      "Upload CSV files",
+      inputId = "csv_files",
+      label = "Upload CSV files",
       multiple = TRUE,
       accept = ".csv"
     ),
@@ -26,39 +28,74 @@ ui <- page_sidebar(
       tags$li("Join"),
       tags$li("Export")
     )
+    
   ),
   
   card(
     card_header("Uploaded Files"),
     DTOutput("uploaded_files")
+  ),
+  
+  card(
+    card_header("Dataset Preview"),
+    DTOutput("dataset_preview")
   )
+  
 )
 
 server <- function(input, output, session) {
   
+  # Application state
   state <- reactiveValues(
     datasets = NULL
   )
   
+  # Import uploaded CSV files
   observeEvent(input$csv_files, {
+    
+    req(input$csv_files)
     
     state$datasets <- import_csvs(input$csv_files)
     
   })
   
+  # Uploaded files table
   output$uploaded_files <- renderDT({
     
     req(input$csv_files)
     
     datatable(
       data.frame(
-        File = input$csv_files$name
+        File = input$csv_files$name,
+        stringsAsFactors = FALSE
       ),
       rownames = FALSE,
+      selection = "single",
       options = list(
         dom = "t"
       )
     )
+    
+  })
+  
+  # Preview selected dataset
+  output$dataset_preview <- renderDT({
+    
+    req(input$uploaded_files_rows_selected)
+    req(state$datasets)
+    
+    selected_file <-
+      input$csv_files$name[input$uploaded_files_rows_selected]
+    
+    datatable(
+      head(state$datasets[[selected_file]], 10),
+      rownames = FALSE,
+      options = list(
+        pageLength = 10,
+        scrollX = TRUE
+      )
+    )
+    
   })
   
 }
