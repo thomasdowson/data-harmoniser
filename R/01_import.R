@@ -1,9 +1,10 @@
+
 import_csvs <- function(file_info) {
   
   datasets <- lapply(
     file_info$datapath,
-    read.csv,
-    stringsAsFactors = FALSE
+    readr::read_csv,
+    show_col_types = FALSE
   )
   
   names(datasets) <- file_info$name

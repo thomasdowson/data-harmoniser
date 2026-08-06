@@ -2,15 +2,15 @@ library(shiny)
 library(bslib)
 library(DT)
 
+source("R/01_import.R")
+
 ui <- page_sidebar(
-  
   title = "Data Harmoniser",
   
   sidebar = sidebar(
-    
     fileInput(
-      inputId = "csv_files",
-      label = "Upload CSV files",
+      "csv_files",
+      "Upload CSV files",
       multiple = TRUE,
       accept = ".csv"
     ),
@@ -36,10 +36,15 @@ ui <- page_sidebar(
 
 server <- function(input, output, session) {
   
-  # Central application state
   state <- reactiveValues(
     datasets = NULL
   )
+  
+  observeEvent(input$csv_files, {
+    
+    state$datasets <- import_csvs(input$csv_files)
+    
+  })
   
   output$uploaded_files <- renderDT({
     
@@ -47,16 +52,15 @@ server <- function(input, output, session) {
     
     datatable(
       data.frame(
-        File = input$csv_files$name,
-        stringsAsFactors = FALSE
+        File = input$csv_files$name
       ),
       rownames = FALSE,
       options = list(
-        dom = "t",
-        pageLength = 10
+        dom = "t"
       )
     )
   })
+  
 }
 
 shinyApp(ui, server)
